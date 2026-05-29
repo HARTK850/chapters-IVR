@@ -7,7 +7,7 @@ app.use(express.json());
 
 
 // =========================
-// MM:SS -> Seconds
+// MM:SS -> seconds
 // =========================
 function timeToSeconds(timeStr) {
 
@@ -15,7 +15,9 @@ function timeToSeconds(timeStr) {
 
         const secs = parseInt(timeStr, 10);
 
-        return isNaN(secs) ? 0 : secs;
+        return isNaN(secs)
+            ? 0
+            : secs;
     }
 
     const parts = timeStr.split(':');
@@ -31,99 +33,35 @@ function timeToSeconds(timeStr) {
 
 
 // =========================
-// Parse chapters.ini
+// Parse chapters
 // =========================
-function parseChapters(
-    rawFileContent,
-    targetFile
-) {
+function parseChapters(chaptersStr) {
 
-    if (!rawFileContent) {
+    if (!chaptersStr) {
 
         console.log(
-            "[Chapters] FileContent ריק"
+            "[Chapters] chapters ריק"
         );
 
         return [];
     }
 
-    let fileContent = rawFileContent;
-
-    try {
-
-        fileContent = decodeURIComponent(
-            rawFileContent.replace(/\+/g, ' ')
-        );
-
-    } catch (e) {}
-
-    const cleanTarget = targetFile
-        .replace(/\\/g, '/')
-        .split('/')
-        .pop()
-        .replace('.wav', '')
-        .trim();
-
     console.log(
-        `[Chapters] מחפש עבור ${cleanTarget}`
+        `[Chapters] RAW: ${chaptersStr}`
     );
 
-    console.log(fileContent);
-
-    const lines =
-        fileContent.split(/\r?\n/);
-
-    const chapters = [];
-
-    let currentBlock = null;
-
-    for (let line of lines) {
-
-        line = line.trim();
-
-        if (
-            !line ||
-            line.startsWith(';')
-        ) {
-            continue;
-        }
-
-        // [000]
-        if (
-            line.startsWith('[') &&
-            line.endsWith(']')
-        ) {
-
-            currentBlock = line
-                .slice(1, -1)
-                .trim();
-
-            continue;
-        }
-
-        // בתוך הבלוק המתאים
-        if (
-            currentBlock === cleanTarget
-        ) {
-
-            const parts =
-                line.split('=');
-
-            if (parts.length === 2) {
-
-                chapters.push({
-                    seconds:
-                        timeToSeconds(
-                            parts[0].trim()
-                        )
-                });
-            }
-        }
-    }
-
-    return chapters.sort(
-        (a, b) => a.seconds - b.seconds
-    );
+    return chaptersStr
+        .split(',')
+        .map(t => t.trim())
+        .filter(Boolean)
+        .map(t => ({
+            seconds:
+                timeToSeconds(t)
+        }))
+        .sort(
+            (a, b) =>
+                a.seconds - b.seconds
+        );
 }
 
 
@@ -147,12 +85,11 @@ app.all('/api', (req, res) => {
         "============================="
     );
 
+    // קובץ נוכחי
     const currentFile =
         params.what || "";
 
-    const selection =
-        params.PressKey || "";
-
+    // מיקום נוכחי
     const playStopMs =
         parseInt(
             params.PlayStop || 0,
@@ -164,8 +101,13 @@ app.all('/api', (req, res) => {
             playStopMs / 1000
         );
 
-    const fileContent =
-    params.chapters || "";
+    // מקש
+    const selection =
+        params.PressKey || "";
+
+    // פרקים
+    const chaptersStr =
+        params.chapters || "";
 
     console.log(
         `[API] קובץ: ${currentFile}`
@@ -177,6 +119,10 @@ app.all('/api', (req, res) => {
 
     console.log(
         `[API] מקש: ${selection}`
+    );
+
+    console.log(
+        `[API] פרקים: ${chaptersStr}`
     );
 
     // הגנה
@@ -192,16 +138,13 @@ app.all('/api', (req, res) => {
 
     // שליפת פרקים
     const chapters =
-        parseChapters(
-            fileContent,
-            currentFile
-        );
+        parseChapters(chaptersStr);
 
     console.log(
         `[Chapters] נמצאו ${chapters.length} פרקים`
     );
 
-    // אם אין פרקים
+    // אין פרקים
     if (chapters.length === 0) {
 
         return res.send(
@@ -212,7 +155,9 @@ app.all('/api', (req, res) => {
     let targetSeconds =
         currentPosition;
 
+    // =========================
     // הבא
+    // =========================
     if (selection === "6") {
 
         const nextChapter =
@@ -233,22 +178,28 @@ app.all('/api', (req, res) => {
         }
     }
 
+    // =========================
     // הקודם
+    // =========================
     else if (selection === "4") {
 
-        const prev =
+        const prevChapters =
             chapters.filter(
                 c =>
                     c.seconds <
                     currentPosition - 2
             );
 
-        if (prev.length > 0) {
+        if (prevChapters.length > 0) {
 
             targetSeconds =
-                prev[
-                    prev.length - 1
+                prevChapters[
+                    prevChapters.length - 1
                 ].seconds;
+
+            console.log(
+                `[PREV] ${targetSeconds}`
+            );
 
         } else {
 
