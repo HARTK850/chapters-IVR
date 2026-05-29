@@ -7,10 +7,15 @@ app.use(express.json());
 
 
 // =========================
-// MM:SS -> seconds
+// MM:SS -> Seconds
 // =========================
 function timeToSeconds(timeStr) {
 
+    if (!timeStr) {
+        return 0;
+    }
+
+    // אם זה כבר מספר
     if (!timeStr.includes(':')) {
 
         const secs = parseInt(timeStr, 10);
@@ -33,35 +38,36 @@ function timeToSeconds(timeStr) {
 
 
 // =========================
-// Parse chapters
+// שליפת פרקים מתוך params
 // =========================
-function parseChapters(chaptersStr) {
+function extractChapters(params) {
 
-    if (!chaptersStr) {
+    // ימות שולח:
+    // "00:00": ""
+    // "00:27": ""
+    // לכן מחפשים מפתחות בפורמט זמן
 
-        console.log(
-            "[Chapters] ApiAdd0 ריק"
+    const chapterKeys = Object.keys(params)
+        .filter(key =>
+            /^\d{2}:\d{2}$/.test(key)
         );
 
-        return [];
-    }
-
     console.log(
-        `[Chapters RAW] ${chaptersStr}`
+        "[Chapters] Keys:",
+        chapterKeys
     );
 
-    return chaptersStr
-        .split(',')
-        .map(x => x.trim())
-        .filter(Boolean)
-        .map(x => ({
-            seconds:
-                timeToSeconds(x)
+    const chapters = chapterKeys
+        .map(time => ({
+            raw: time,
+            seconds: timeToSeconds(time)
         }))
         .sort(
             (a, b) =>
                 a.seconds - b.seconds
         );
+
+    return chapters;
 }
 
 
@@ -85,11 +91,15 @@ app.all('/api', (req, res) => {
         "============================="
     );
 
-    // קובץ
+    // =========================
+    // קובץ נוכחי
+    // =========================
     const currentFile =
         params.what || "";
 
-    // זמן
+    // =========================
+    // מיקום נוכחי
+    // =========================
     const playStopMs =
         parseInt(
             params.PlayStop || 0,
@@ -101,13 +111,11 @@ app.all('/api', (req, res) => {
             playStopMs / 1000
         );
 
-    // מקש
+    // =========================
+    // מקש שנלחץ
+    // =========================
     const selection =
         params.PressKey || "";
-
-    // פרקים
-    const chaptersStr =
-        params.ApiAdd0 || "";
 
     console.log(
         `[API] File: ${currentFile}`
@@ -121,18 +129,16 @@ app.all('/api', (req, res) => {
         `[API] Key: ${selection}`
     );
 
-    console.log(
-        `[API] Chapters: ${chaptersStr}`
-    );
-
-    // הגנה
+    // =========================
+    // הגנה בסיסית
+    // =========================
     if (
         !currentFile ||
         !selection
     ) {
 
         console.log(
-            "[Protection] Missing data"
+            "[Protection] Missing required params"
         );
 
         return res.send(
@@ -140,29 +146,43 @@ app.all('/api', (req, res) => {
         );
     }
 
-    // פרקים
+    // =========================
+    // שליפת פרקים
+    // =========================
     const chapters =
-        parseChapters(
-            chaptersStr
-        );
+        extractChapters(params);
 
     console.log(
         `[Chapters] Count: ${chapters.length}`
     );
 
-    // אין פרקים
+    console.log(
+        `[Chapters] Data:`,
+        chapters
+    );
+
+    // =========================
+    // אם אין פרקים
+    // =========================
     if (chapters.length === 0) {
+
+        console.log(
+            "[Protection] No chapters found"
+        );
 
         return res.send(
             `play_from_position^${playStopMs || 1000}`
         );
     }
 
+    // =========================
+    // ברירת מחדל
+    // =========================
     let targetSeconds =
         currentPosition;
 
     // =========================
-    // הבא
+    // פרק הבא
     // =========================
     if (selection === "6") {
 
@@ -179,48 +199,65 @@ app.all('/api', (req, res) => {
                 nextChapter.seconds;
 
             console.log(
-                `[NEXT] ${targetSeconds}`
+                `[NEXT] Jumping to ${targetSeconds}`
+            );
+
+        } else {
+
+            console.log(
+                "[NEXT] No next chapter"
             );
         }
     }
 
     // =========================
-    // הקודם
+    // פרק קודם
     // =========================
     else if (selection === "4") {
 
-        const prev =
+        const previousChapters =
             chapters.filter(
                 c =>
                     c.seconds <
                     currentPosition - 2
             );
 
-        if (prev.length > 0) {
+        if (
+            previousChapters.length > 0
+        ) {
 
             targetSeconds =
-                prev[
-                    prev.length - 1
+                previousChapters[
+                    previousChapters.length - 1
                 ].seconds;
 
             console.log(
-                `[PREV] ${targetSeconds}`
+                `[PREV] Jumping to ${targetSeconds}`
             );
 
         } else {
 
             targetSeconds = 0;
+
+            console.log(
+                "[PREV] Returning to start"
+            );
         }
     }
 
-    // מילישניות
+    // =========================
+    // המרה למילישניות
+    // =========================
     const targetMs =
         targetSeconds * 1000;
 
     console.log(
-        `[RESPONSE] ${targetMs}`
+        `[RESPONSE] play_from_position^${targetMs}`
     );
 
+    // =========================
+    // תשובה לימות
+    // =========================
     return res.send(
         `play_from_position^${targetMs}`
     );
