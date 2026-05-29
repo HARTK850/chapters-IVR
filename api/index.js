@@ -72,15 +72,17 @@ function sendYemotResponse(
 ) {
 
     const responseText =
-        `play_from_position^${positionMs}`;
+`play_from_position=${positionMs}
+response=ok
+`;
 
     console.log(
-        `[Yemot Response] ${responseText}`
+        `[Yemot Response]\n${responseText}`
     );
 
     res.set(
         'Content-Type',
-        'text/plain; charset=utf-8'
+        'text/plain'
     );
 
     return res
@@ -109,15 +111,11 @@ app.all('/api', (req, res) => {
         "============================="
     );
 
-    // =========================
     // Current file
-    // =========================
     const currentFile =
         params.what || "";
 
-    // =========================
     // Current position
-    // =========================
     const playStopMs =
         parseInt(
             params.PlayStop || 0,
@@ -129,9 +127,7 @@ app.all('/api', (req, res) => {
             playStopMs / 1000
         );
 
-    // =========================
-    // Pressed key
-    // =========================
+    // Key
     const selection =
         params.PressKey || "";
 
@@ -147,17 +143,11 @@ app.all('/api', (req, res) => {
         `[API] Key: ${selection}`
     );
 
-    // =========================
     // Protection
-    // =========================
     if (
         !currentFile ||
         !selection
     ) {
-
-        console.log(
-            "[Protection] Missing params"
-        );
 
         return sendYemotResponse(
             res,
@@ -165,9 +155,7 @@ app.all('/api', (req, res) => {
         );
     }
 
-    // =========================
     // Chapters
-    // =========================
     const chapters =
         extractChapters(params);
 
@@ -180,14 +168,8 @@ app.all('/api', (req, res) => {
         chapters
     );
 
-    // =========================
     // No chapters
-    // =========================
     if (chapters.length === 0) {
-
-        console.log(
-            "[Protection] No chapters"
-        );
 
         return sendYemotResponse(
             res,
@@ -195,15 +177,10 @@ app.all('/api', (req, res) => {
         );
     }
 
-    // =========================
-    // Default target
-    // =========================
     let targetSeconds =
         currentPosition;
 
-    // =========================
-    // Next chapter
-    // =========================
+    // NEXT
     if (selection === "6") {
 
         const nextChapter =
@@ -221,18 +198,10 @@ app.all('/api', (req, res) => {
             console.log(
                 `[NEXT] ${targetSeconds}`
             );
-
-        } else {
-
-            console.log(
-                "[NEXT] No next chapter"
-            );
         }
     }
 
-    // =========================
-    // Previous chapter
-    // =========================
+    // PREVIOUS
     else if (selection === "4") {
 
         const previousChapters =
@@ -258,16 +227,10 @@ app.all('/api', (req, res) => {
         } else {
 
             targetSeconds = 0;
-
-            console.log(
-                "[PREV] Start of file"
-            );
         }
     }
 
-    // =========================
-    // Milliseconds
-    // =========================
+    // milliseconds
     const targetMs =
         targetSeconds * 1000;
 
@@ -275,9 +238,6 @@ app.all('/api', (req, res) => {
         `[FINAL POSITION] ${targetMs}`
     );
 
-    // =========================
-    // Final response
-    // =========================
     return sendYemotResponse(
         res,
         targetMs
