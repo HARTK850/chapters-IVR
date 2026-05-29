@@ -4,10 +4,9 @@ const app = express();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// פונקציית עזר שהופכת פורמט של MM:SS (דקות:שניות) למספר שניות כולל
+// הפיכת MM:SS לשניות
 function timeToSeconds(timeStr) {
     if (!timeStr.includes(':')) {
-        // אם המנהל בכל זאת רשם רק מספר, נתייחס אליו כשניות
         const secs = parseInt(timeStr, 10);
         return isNaN(secs) ? 0 : secs;
     }
@@ -17,83 +16,86 @@ function timeToSeconds(timeStr) {
     return (minutes * 60) + seconds;
 }
 
-// פונקציית עזר לפענוח קובץ ההגדרות מהשלוחה
+// פענוח קובץ ה-ini
 function parseChapters(fileContent, targetFile) {
     if (!fileContent) return [];
     
+    // ניקוי שם קובץ מנתיב מלא (למשל ivr2:/4/000.wav יהפוך ל-000)
+    const cleanTarget = targetFile.replace(/\\/g, '/').split('/').pop().replace('.wav', '').trim();
+
     const lines = fileContent.split(/\r?\n/);
     const chapters = [];
     let currentFile = null;
 
     for (let line of lines) {
         line = line.trim();
-        if (!line || line.startsWith(';')) continue; // דילוג על שורות ריקות או הערות
+        if (!line || line.startsWith(';')) continue;
 
-        // זיהוי בלוק של קובץ שמע, למשל [031]
         if (line.startsWith('[') && line.endsWith(']')) {
             currentFile = line.slice(1, -1).trim();
             continue;
         }
 
-        // אם הגענו לשורת הגדרת זמן והקובץ מתאים לקובץ שמושמע כעת
-        if (currentFile && (currentFile === targetFile || `${currentFile}.wav` === targetFile || currentFile === targetFile.replace('.wav', ''))) {
+        if (currentFile && currentFile === cleanTarget) {
             const parts = line.split('=');
             if (parts.length === 2) {
-                const timeString = parts[0].trim(); // למשל "03:07"
-                const title = parts[1].trim();
+                const timeString = parts[0].trim();
                 const totalSeconds = timeToSeconds(timeString);
-                
-                chapters.push({ seconds: totalSeconds, title });
+                chapters.push({ seconds: totalSeconds });
             }
         }
     }
-    // מיון הזמנים מההתחלה לסוף
     return chapters.sort((a, b) => a.seconds - b.seconds);
 }
 
 app.all('/api', (req, res) => {
-    // קבלת הפרמטרים מימות המשיח (תומך ב-GET וב-POST)
     const params = Object.keys(req.query).length > 0 ? req.query : req.body;
     
-    // ימות המשיח שולחת בשלוחת השמעת קבצים את המיקום הנוכחי בשניות בפרמטר Position
-    const currentPosition = parseInt(params.Position || 0, 10); 
-    const currentFile = params.current_file || ""; // שם הקובץ המתנגן (למשל 031.wav)
-    const fileContent = params.FileContent || ""; // תוכן קובץ ההגדרות מהשלוחה
+    // 1. קבלת המיקום הנוכחי מתוך פרמטר PlayStop (בימות המשיח זה מגיע באלפיות שנייה)
+    const playStopMs = parseInt(params.PlayStop || 0, 10);
+    const currentPosition = Math.floor(playStopMs / 1000); // המרה לשניות עגולות
 
-    // זיהוי איזה מקש נלחץ (נשלח בפרמטר הבקשה בהתאם להגדרת המקש)
-    const selection = params.selection; 
+    // 2. קבלת שם הקובץ מתוך פרמטר what
+    const currentFile = params.what || ""; 
 
-    // הגנה: אם אין קובץ מוגדר או שלא נשלח מקש, נגיד למערכת להמשיך לנגן כרגיל
+    // 3. קבלת המקש שנלחץ בפועל מתוך פרמטר PressKey
+    const selection = params.PressKey || params.selection || ""; 
+
+    // 4. קבלת תוכן קובץ ההגדרות
+    const fileContent = params.FileContent || ""; 
+
     if (!currentFile || !selection) {
-        return res.send(`play_from_position=${currentPosition}\n`);
+        return res.send(`play_from_position=${playStopMs}\n`);
     }
 
-    // שליפת הפרקים הרלוונטיים ופענוחם
     const chapters = parseChapters(fileContent, currentFile);
 
     if (chapters.length === 0) {
-        // אם אין הגדרות פרקים לקובץ הזה, נמשיך לנגן כרגיל מאותו המיקום
-        return res.send(`play_from_position=${currentPosition}\n`);
+        // אם לא נמצאו פרקים, נחזיר את המערכת להמשיך לנגן בדיוק מאותה נקודה (באלפיות שנייה)
+        return res.send(`play_from_position=${playStopMs}\n`);
     }
 
-    let targetPosition = currentPosition;
+    let targetPositionSeconds = currentPosition;
 
     if (selection === "6") { // מעבר לפרק הבא
-        const nextChapter = chapters.find(c => c.seconds > currentPosition + 2); // פלוס 2 שניות לביטחון
+        const nextChapter = chapters.find(c => c.seconds > currentPosition + 1);
         if (nextChapter) {
-            targetPosition = nextChapter.seconds;
+            targetPositionSeconds = nextChapter.seconds;
         }
     } else if (selection === "4") { // חזרה לפרק הקודם
-        const pastChapters = chapters.filter(c => c.seconds < currentPosition - 3);
+        const pastChapters = chapters.filter(c => c.seconds < currentPosition - 2);
         if (pastChapters.length > 0) {
-            targetPosition = pastChapters[pastChapters.length - 1].seconds;
+            targetPositionSeconds = pastChapters[pastChapters.length - 1].seconds;
         } else {
-            targetPosition = 0; // חזרה לתחילת הקובץ
+            targetPositionSeconds = 0;
         }
     }
 
-    // פקודת ההחזרה הייעודית לשלוחת תפריט/השמעה: מעבר מידי למיקום החדש בקובץ
-    res.send(`play_from_position=${targetPosition}\n`);
+    // המרה חזרה לאלפיות שנייה עבור פקודת play_from_position של ימות המשיח
+    const targetPositionMs = targetPositionSeconds * 1000;
+
+    // החזרת הפקודה הנכונה
+    res.send(`play_from_position=${targetPositionMs}\n`);
 });
 
 module.exports = app;
