@@ -165,8 +165,7 @@ app.all('/api', (req, res) => {
         );
 
     const fileContent =
-        params.FileContent ||
-        "";
+    params.chapters || "";
 
     console.log(
         `[API] קובץ: ${currentFile}`
