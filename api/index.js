@@ -64,7 +64,7 @@ function extractChapters(params) {
 
 
 // =========================
-// Send response to Yemot
+// Send Yemot response
 // =========================
 function sendYemotResponse(
     res,
@@ -72,15 +72,20 @@ function sendYemotResponse(
 ) {
 
     const responseText =
-        `play_from_position=${positionMs}`;
+        `play_from_position^${positionMs}`;
 
     console.log(
         `[Yemot Response] ${responseText}`
     );
 
-    res.set('Content-Type', 'text/plain; charset=utf-8');
+    res.set(
+        'Content-Type',
+        'text/plain; charset=utf-8'
+    );
 
-    return res.status(200).send(responseText);
+    return res
+        .status(200)
+        .send(responseText);
 }
 
 
@@ -104,11 +109,15 @@ app.all('/api', (req, res) => {
         "============================="
     );
 
-    // קובץ
+    // =========================
+    // Current file
+    // =========================
     const currentFile =
         params.what || "";
 
-    // זמן נוכחי
+    // =========================
+    // Current position
+    // =========================
     const playStopMs =
         parseInt(
             params.PlayStop || 0,
@@ -120,7 +129,9 @@ app.all('/api', (req, res) => {
             playStopMs / 1000
         );
 
-    // מקש
+    // =========================
+    // Pressed key
+    // =========================
     const selection =
         params.PressKey || "";
 
@@ -136,7 +147,9 @@ app.all('/api', (req, res) => {
         `[API] Key: ${selection}`
     );
 
-    // הגנה
+    // =========================
+    // Protection
+    // =========================
     if (
         !currentFile ||
         !selection
@@ -152,7 +165,9 @@ app.all('/api', (req, res) => {
         );
     }
 
-    // פרקים
+    // =========================
+    // Chapters
+    // =========================
     const chapters =
         extractChapters(params);
 
@@ -165,7 +180,9 @@ app.all('/api', (req, res) => {
         chapters
     );
 
-    // אין פרקים
+    // =========================
+    // No chapters
+    // =========================
     if (chapters.length === 0) {
 
         console.log(
@@ -178,12 +195,14 @@ app.all('/api', (req, res) => {
         );
     }
 
-    // ברירת מחדל
+    // =========================
+    // Default target
+    // =========================
     let targetSeconds =
         currentPosition;
 
     // =========================
-    // הבא
+    // Next chapter
     // =========================
     if (selection === "6") {
 
@@ -212,7 +231,7 @@ app.all('/api', (req, res) => {
     }
 
     // =========================
-    // הקודם
+    // Previous chapter
     // =========================
     else if (selection === "4") {
 
@@ -246,7 +265,9 @@ app.all('/api', (req, res) => {
         }
     }
 
-    // מילישניות
+    // =========================
+    // Milliseconds
+    // =========================
     const targetMs =
         targetSeconds * 1000;
 
@@ -254,6 +275,9 @@ app.all('/api', (req, res) => {
         `[FINAL POSITION] ${targetMs}`
     );
 
+    // =========================
+    // Final response
+    // =========================
     return sendYemotResponse(
         res,
         targetMs
