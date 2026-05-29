@@ -64,7 +64,7 @@ function extractChapters(params) {
 
 
 // =========================
-// Send Yemot response
+// Yemot response
 // =========================
 function sendYemotResponse(
     res,
@@ -72,22 +72,21 @@ function sendYemotResponse(
 ) {
 
     const responseText =
-`play_from_position=${positionMs}
-response=ok
-`;
+        `play_from_position^${positionMs}\r\n`;
 
     console.log(
-        `[Yemot Response]\n${responseText}`
+        `[Yemot Response Raw]`,
+        JSON.stringify(responseText)
     );
 
-    res.set(
-        'Content-Type',
-        'text/plain'
-    );
+    res.writeHead(200, {
+        'Content-Type':
+            'text/plain; charset=utf-8',
+        'Content-Length':
+            Buffer.byteLength(responseText)
+    });
 
-    return res
-        .status(200)
-        .send(responseText);
+    return res.end(responseText);
 }
 
 
@@ -127,7 +126,7 @@ app.all('/api', (req, res) => {
             playStopMs / 1000
         );
 
-    // Key
+    // Pressed key
     const selection =
         params.PressKey || "";
 
@@ -148,6 +147,10 @@ app.all('/api', (req, res) => {
         !currentFile ||
         !selection
     ) {
+
+        console.log(
+            "[Protection] Missing params"
+        );
 
         return sendYemotResponse(
             res,
@@ -171,16 +174,23 @@ app.all('/api', (req, res) => {
     // No chapters
     if (chapters.length === 0) {
 
+        console.log(
+            "[Protection] No chapters"
+        );
+
         return sendYemotResponse(
             res,
             playStopMs || 1000
         );
     }
 
+    // Default target
     let targetSeconds =
         currentPosition;
 
-    // NEXT
+    // =========================
+    // Next chapter
+    // =========================
     if (selection === "6") {
 
         const nextChapter =
@@ -201,7 +211,9 @@ app.all('/api', (req, res) => {
         }
     }
 
-    // PREVIOUS
+    // =========================
+    // Previous chapter
+    // =========================
     else if (selection === "4") {
 
         const previousChapters =
@@ -227,10 +239,14 @@ app.all('/api', (req, res) => {
         } else {
 
             targetSeconds = 0;
+
+            console.log(
+                "[PREV] Start of file"
+            );
         }
     }
 
-    // milliseconds
+    // Milliseconds
     const targetMs =
         targetSeconds * 1000;
 
