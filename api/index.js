@@ -15,7 +15,6 @@ function timeToSeconds(timeStr) {
         return 0;
     }
 
-    // אם זה כבר מספר
     if (!timeStr.includes(':')) {
 
         const secs = parseInt(timeStr, 10);
@@ -38,14 +37,9 @@ function timeToSeconds(timeStr) {
 
 
 // =========================
-// שליפת פרקים מתוך params
+// Extract chapters
 // =========================
 function extractChapters(params) {
-
-    // ימות שולח:
-    // "00:00": ""
-    // "00:27": ""
-    // לכן מחפשים מפתחות בפורמט זמן
 
     const chapterKeys = Object.keys(params)
         .filter(key =>
@@ -57,7 +51,7 @@ function extractChapters(params) {
         chapterKeys
     );
 
-    const chapters = chapterKeys
+    return chapterKeys
         .map(time => ({
             raw: time,
             seconds: timeToSeconds(time)
@@ -66,8 +60,27 @@ function extractChapters(params) {
             (a, b) =>
                 a.seconds - b.seconds
         );
+}
 
-    return chapters;
+
+// =========================
+// Send response to Yemot
+// =========================
+function sendYemotResponse(
+    res,
+    positionMs
+) {
+
+    const responseText =
+        `play_from_position=${positionMs}`;
+
+    console.log(
+        `[Yemot Response] ${responseText}`
+    );
+
+    res.set('Content-Type', 'text/plain; charset=utf-8');
+
+    return res.status(200).send(responseText);
 }
 
 
@@ -91,15 +104,11 @@ app.all('/api', (req, res) => {
         "============================="
     );
 
-    // =========================
-    // קובץ נוכחי
-    // =========================
+    // קובץ
     const currentFile =
         params.what || "";
 
-    // =========================
-    // מיקום נוכחי
-    // =========================
+    // זמן נוכחי
     const playStopMs =
         parseInt(
             params.PlayStop || 0,
@@ -111,9 +120,7 @@ app.all('/api', (req, res) => {
             playStopMs / 1000
         );
 
-    // =========================
-    // מקש שנלחץ
-    // =========================
+    // מקש
     const selection =
         params.PressKey || "";
 
@@ -129,26 +136,23 @@ app.all('/api', (req, res) => {
         `[API] Key: ${selection}`
     );
 
-    // =========================
-    // הגנה בסיסית
-    // =========================
+    // הגנה
     if (
         !currentFile ||
         !selection
     ) {
 
         console.log(
-            "[Protection] Missing required params"
+            "[Protection] Missing params"
         );
 
-        return res.send(
-            `play_from_position^${playStopMs || 1000}`
+        return sendYemotResponse(
+            res,
+            playStopMs || 1000
         );
     }
 
-    // =========================
-    // שליפת פרקים
-    // =========================
+    // פרקים
     const chapters =
         extractChapters(params);
 
@@ -161,28 +165,25 @@ app.all('/api', (req, res) => {
         chapters
     );
 
-    // =========================
-    // אם אין פרקים
-    // =========================
+    // אין פרקים
     if (chapters.length === 0) {
 
         console.log(
-            "[Protection] No chapters found"
+            "[Protection] No chapters"
         );
 
-        return res.send(
-            `play_from_position^${playStopMs || 1000}`
+        return sendYemotResponse(
+            res,
+            playStopMs || 1000
         );
     }
 
-    // =========================
     // ברירת מחדל
-    // =========================
     let targetSeconds =
         currentPosition;
 
     // =========================
-    // פרק הבא
+    // הבא
     // =========================
     if (selection === "6") {
 
@@ -199,7 +200,7 @@ app.all('/api', (req, res) => {
                 nextChapter.seconds;
 
             console.log(
-                `[NEXT] Jumping to ${targetSeconds}`
+                `[NEXT] ${targetSeconds}`
             );
 
         } else {
@@ -211,7 +212,7 @@ app.all('/api', (req, res) => {
     }
 
     // =========================
-    // פרק קודם
+    // הקודם
     // =========================
     else if (selection === "4") {
 
@@ -232,7 +233,7 @@ app.all('/api', (req, res) => {
                 ].seconds;
 
             console.log(
-                `[PREV] Jumping to ${targetSeconds}`
+                `[PREV] ${targetSeconds}`
             );
 
         } else {
@@ -240,26 +241,22 @@ app.all('/api', (req, res) => {
             targetSeconds = 0;
 
             console.log(
-                "[PREV] Returning to start"
+                "[PREV] Start of file"
             );
         }
     }
 
-    // =========================
-    // המרה למילישניות
-    // =========================
+    // מילישניות
     const targetMs =
         targetSeconds * 1000;
 
     console.log(
-        `[RESPONSE] play_from_position^${targetMs}`
+        `[FINAL POSITION] ${targetMs}`
     );
 
-    // =========================
-    // תשובה לימות
-    // =========================
-    return res.send(
-        `play_from_position^${targetMs}`
+    return sendYemotResponse(
+        res,
+        targetMs
     );
 });
 
