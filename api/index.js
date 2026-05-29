@@ -31,14 +31,24 @@ function timeToSeconds(timeStr) {
 // =========================
 // פענוח chapters.ini
 // =========================
-function parseChapters(fileContent, targetFile) {
+function parseChapters(rawContent, targetFile) {
 
-    if (!fileContent) {
+    if (!rawContent) {
 
-        console.log("[Chapters] תוכן קובץ ריק");
+        console.log("[Chapters] FileContent ריק");
 
         return [];
     }
+
+    let fileContent = rawContent;
+
+    try {
+
+        fileContent = decodeURIComponent(
+            rawContent.replace(/\+/g, ' ')
+        );
+
+    } catch (e) {}
 
     const cleanTarget = targetFile
         .replace(/\\/g, '/')
@@ -47,7 +57,7 @@ function parseChapters(fileContent, targetFile) {
         .replace('.wav', '')
         .trim();
 
-    console.log(`[Chapters] מחפש עבור קובץ: ${cleanTarget}`);
+    console.log(`[Chapters] מחפש עבור: ${cleanTarget}`);
 
     console.log("[Chapters] תוכן הקובץ:");
     console.log(fileContent);
@@ -56,7 +66,7 @@ function parseChapters(fileContent, targetFile) {
 
     const chapters = [];
 
-    let currentFile = null;
+    let currentBlock = null;
 
     for (let line of lines) {
 
@@ -67,22 +77,27 @@ function parseChapters(fileContent, targetFile) {
         }
 
         // [000]
-        if (line.startsWith('[') && line.endsWith(']')) {
+        if (
+            line.startsWith('[') &&
+            line.endsWith(']')
+        ) {
 
-            currentFile = line
+            currentBlock = line
                 .slice(1, -1)
                 .trim();
 
             continue;
         }
 
-        if (currentFile === cleanTarget) {
+        // בתוך הבלוק המתאים
+        if (currentBlock === cleanTarget) {
 
             const parts = line.split('=');
 
             if (parts.length === 2) {
 
-                const seconds = timeToSeconds(parts[0].trim());
+                const seconds =
+                    timeToSeconds(parts[0]);
 
                 chapters.push({
                     seconds
@@ -91,7 +106,9 @@ function parseChapters(fileContent, targetFile) {
         }
     }
 
-    return chapters.sort((a, b) => a.seconds - b.seconds);
+    return chapters.sort(
+        (a, b) => a.seconds - b.seconds
+    );
 }
 
 
@@ -109,7 +126,11 @@ app.all('/api', (req, res) => {
     console.log(params);
     console.log("=============================");
 
-    // זמן נוכחי
+    // קובץ נוכחי
+    const currentFile =
+        params.what || "";
+
+    // מיקום נוכחי
     const playStopMs = parseInt(
         params.PlayStop || 0,
         10
@@ -120,17 +141,12 @@ app.all('/api', (req, res) => {
     );
 
     // מקש
-    const selection = params.PressKey || "";
-
-    // קובץ מנוגן
-    const currentFile =
-        params.what ||
-        "";
+    const selection =
+        params.PressKey || "";
 
     // תוכן chapters.ini
     const fileContent =
-        params.ApiReadFile ||
-        "";
+        params.FileContent || "";
 
     console.log(
         `[API] קובץ: ${currentFile}`
@@ -144,11 +160,14 @@ app.all('/api', (req, res) => {
         `[API] מקש: ${selection}`
     );
 
-    // הגנה
-    if (!selection || !currentFile) {
+    // אם חסר מידע
+    if (
+        !currentFile ||
+        !selection
+    ) {
 
         console.log(
-            "[Protection] חסר selection או currentFile"
+            "[Protection] חסר מידע"
         );
 
         return res.send(
@@ -166,24 +185,36 @@ app.all('/api', (req, res) => {
         `[Chapters] נמצאו ${chapters.length} פרקים`
     );
 
-    let targetPositionSeconds = currentPosition;
+    // אם אין פרקים
+    if (chapters.length === 0) {
+
+        return res.send(
+            `play_from_position^${playStopMs || 1000}`
+        );
+    }
+
+    let targetSeconds =
+        currentPosition;
 
     // =========================
     // הבא
     // =========================
     if (selection === "6") {
 
-        const nextChapter = chapters.find(
-            c => c.seconds > currentPosition + 1
-        );
+        const nextChapter =
+            chapters.find(
+                c =>
+                    c.seconds >
+                    currentPosition + 1
+            );
 
         if (nextChapter) {
 
-            targetPositionSeconds =
+            targetSeconds =
                 nextChapter.seconds;
 
             console.log(
-                `[Navigation] הבא -> ${targetPositionSeconds}`
+                `[Navigation] הבא -> ${targetSeconds}`
             );
         }
     }
@@ -193,29 +224,32 @@ app.all('/api', (req, res) => {
     // =========================
     else if (selection === "4") {
 
-        const prevChapters = chapters.filter(
-            c => c.seconds < currentPosition - 2
-        );
+        const prevChapters =
+            chapters.filter(
+                c =>
+                    c.seconds <
+                    currentPosition - 2
+            );
 
         if (prevChapters.length > 0) {
 
-            targetPositionSeconds =
+            targetSeconds =
                 prevChapters[
                     prevChapters.length - 1
                 ].seconds;
 
             console.log(
-                `[Navigation] קודם -> ${targetPositionSeconds}`
+                `[Navigation] קודם -> ${targetSeconds}`
             );
 
         } else {
 
-            targetPositionSeconds = 0;
+            targetSeconds = 0;
         }
     }
 
     const targetMs =
-        targetPositionSeconds * 1000;
+        targetSeconds * 1000;
 
     console.log(
         `[Response] play_from_position^${targetMs}`
