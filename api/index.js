@@ -40,23 +40,23 @@ function parseChapters(chaptersStr) {
     if (!chaptersStr) {
 
         console.log(
-            "[Chapters] chapters ריק"
+            "[Chapters] ApiAdd0 ריק"
         );
 
         return [];
     }
 
     console.log(
-        `[Chapters] RAW: ${chaptersStr}`
+        `[Chapters RAW] ${chaptersStr}`
     );
 
     return chaptersStr
         .split(',')
-        .map(t => t.trim())
+        .map(x => x.trim())
         .filter(Boolean)
-        .map(t => ({
+        .map(x => ({
             seconds:
-                timeToSeconds(t)
+                timeToSeconds(x)
         }))
         .sort(
             (a, b) =>
@@ -85,11 +85,11 @@ app.all('/api', (req, res) => {
         "============================="
     );
 
-    // קובץ נוכחי
+    // קובץ
     const currentFile =
         params.what || "";
 
-    // מיקום נוכחי
+    // זמן
     const playStopMs =
         parseInt(
             params.PlayStop || 0,
@@ -107,22 +107,22 @@ app.all('/api', (req, res) => {
 
     // פרקים
     const chaptersStr =
-        params.chapters || "";
+        params.ApiAdd0 || "";
 
     console.log(
-        `[API] קובץ: ${currentFile}`
+        `[API] File: ${currentFile}`
     );
 
     console.log(
-        `[API] מיקום: ${currentPosition}`
+        `[API] Position: ${currentPosition}`
     );
 
     console.log(
-        `[API] מקש: ${selection}`
+        `[API] Key: ${selection}`
     );
 
     console.log(
-        `[API] פרקים: ${chaptersStr}`
+        `[API] Chapters: ${chaptersStr}`
     );
 
     // הגנה
@@ -131,17 +131,23 @@ app.all('/api', (req, res) => {
         !selection
     ) {
 
+        console.log(
+            "[Protection] Missing data"
+        );
+
         return res.send(
             `play_from_position^${playStopMs || 1000}`
         );
     }
 
-    // שליפת פרקים
+    // פרקים
     const chapters =
-        parseChapters(chaptersStr);
+        parseChapters(
+            chaptersStr
+        );
 
     console.log(
-        `[Chapters] נמצאו ${chapters.length} פרקים`
+        `[Chapters] Count: ${chapters.length}`
     );
 
     // אין פרקים
@@ -183,18 +189,18 @@ app.all('/api', (req, res) => {
     // =========================
     else if (selection === "4") {
 
-        const prevChapters =
+        const prev =
             chapters.filter(
                 c =>
                     c.seconds <
                     currentPosition - 2
             );
 
-        if (prevChapters.length > 0) {
+        if (prev.length > 0) {
 
             targetSeconds =
-                prevChapters[
-                    prevChapters.length - 1
+                prev[
+                    prev.length - 1
                 ].seconds;
 
             console.log(
@@ -207,6 +213,7 @@ app.all('/api', (req, res) => {
         }
     }
 
+    // מילישניות
     const targetMs =
         targetSeconds * 1000;
 
