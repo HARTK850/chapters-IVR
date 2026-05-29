@@ -4,7 +4,7 @@ const app = express();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// המרת פורמט MM:SS או מספר שניות נקי למספר
+// המרת פורמט MM:SS לשניות
 function timeToSeconds(timeStr) {
     if (!timeStr.includes(':')) {
         const secs = parseInt(timeStr, 10);
@@ -17,12 +17,22 @@ function timeToSeconds(timeStr) {
 }
 
 // פענוח קובץ ה-ini של הפרקים
-function parseChapters(fileContent, targetFile) {
-    if (!fileContent) return [];
+function parseChapters(rawFileContent, targetFile) {
+    if (!rawFileContent) return [];
     
+    let fileContent = rawFileContent;
+    // הגנה ופיענוח במידה והטקסט הגיע מקודד מה-IVR (URL Encoded)
+    if (rawFileContent.includes('%') || rawFileContent.includes('+')) {
+        try {
+            fileContent = decodeURIComponent(rawFileContent.replace(/\+/g, ' '));
+        } catch (e) {
+            console.log("[Chapters Debug] שגיאה בפיענוח הקידוד של הקובץ, מנסה לעבוד רגיל");
+        }
+    }
+
     // ניקוי נתיב הקובץ (למשל ivr2:/4/000.wav יהפוך ל-000)
     const cleanTarget = targetFile.replace(/\\/g, '/').split('/').pop().replace('.wav', '').trim();
-    console.log(`[Chapters Debug] מחפש התאמה עבור הקובץ הנקי: "${cleanTarget}"`);
+    console.log(`[Chapters Debug] מחפש התאמה לקובץ נקי: "${cleanTarget}"`);
 
     const lines = fileContent.split(/\r?\n/);
     const chapters = [];
@@ -52,15 +62,15 @@ function parseChapters(fileContent, targetFile) {
 app.all('/api', (req, res) => {
     const params = Object.keys(req.query).length > 0 ? req.query : req.body;
     
-    // ימות המשיח שולחת את שם הקובץ בפרמטר what ואת המיקום ב-PlayStop (באלפיות שנייה)
     const playStopMs = parseInt(params.PlayStop || 0, 10);
-    const currentPosition = Math.floor(playStopMs / 1000); // המרה לשניות עגולות
+    const currentPosition = Math.floor(playStopMs / 1000); // המרה לשניות
     const currentFile = params.what || ""; 
     const selection = params.PressKey || ""; 
     const fileContent = params.FileContent || ""; 
 
     console.log(`[API Request] קובץ: ${currentFile}, מיקום בשניות: ${currentPosition}, מקש: ${selection}`);
 
+    // אם אין פרמטרים בסיסיים, נחזיר את המיקום המקורי
     if (!currentFile || !selection) {
         return res.send(`play_from_position=${playStopMs}\n`);
     }
@@ -76,8 +86,6 @@ app.all('/api', (req, res) => {
             if (nextChapter) {
                 targetPositionSeconds = nextChapter.seconds;
                 console.log(`[Navigation] נמצא פרק הבא בשנייה: ${targetPositionSeconds}`);
-            } else {
-                console.log(`[Navigation] לא נמצא פרק הבא, נשארים במיקום הנוכחי.`);
             }
         } else if (selection === "4") { // חזרה לפרק הקודם
             const pastChapters = chapters.filter(c => c.seconds < currentPosition - 2);
@@ -86,15 +94,19 @@ app.all('/api', (req, res) => {
                 console.log(`[Navigation] נמצא פרק קודם בשנייה: ${targetPositionSeconds}`);
             } else {
                 targetPositionSeconds = 0;
-                console.log(`[Navigation] אין פרק קודם, חוזרים לתחילת הקובץ.`);
+                console.log(`[Navigation] חוזר לתחילת הקובץ.`);
             }
         }
+    } else {
+        // מנגנון הגנה: אם לא נמצאו פרקים בכלל, נחזיר את המיקום הנוכחי בשניות כפול 1000
+        // כדי שימות המשיח לא תתבלבל ותזרוק לתפריט הראשי
+        const safeMs = currentPosition * 1000 || playStopMs || 1000;
+        return res.send(`play_from_position=${safeMs}\n`);
     }
 
     const targetPositionMs = targetPositionSeconds * 1000;
-
-    // פתרון בעיית החזרה לתפריט הראשי:
-    // נחזיר פקודה משולבת שמכריחה את המערכת לרענן את השלוחה ולנגן מהמיקום המבוקש
+    
+    // שליחת הפקודה המדויקת בחזרה
     res.send(`play_from_position=${targetPositionMs}\n`);
 });
 
