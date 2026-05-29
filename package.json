@@ -1,0 +1,8 @@
+{
+  "name": "ivr-chapters-api",
+  "version": "1.0.0",
+  "main": "api/index.js",
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
